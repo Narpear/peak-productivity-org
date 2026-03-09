@@ -1,7 +1,9 @@
-export default function DagPage() {
-  return (
-    <div className="p-8">
-      <p className="text-sky-600 text-sm">Dependency graph coming in Step 7.</p>
-    </div>
-  )
+'use client'
+
+import { use } from 'react'
+import DagView from '@/components/dag/DagView'
+
+export default function DagPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
+  return <DagView projectId={id} />
 }
