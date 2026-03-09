@@ -7,7 +7,7 @@ const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit' })
 const fraunces = Fraunces({ subsets: ['latin'], variable: '--font-fraunces', axes: ['opsz'] })
 
 export const metadata: Metadata = {
-  title: 'Tideflow',
+  title: 'Swiftflow',
   description: 'Team productivity, coastal style',
 }
 

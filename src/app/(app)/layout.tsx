@@ -52,7 +52,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </svg>
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #e0f2fe, #7dd3fc, #22d3ee)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Tideflow</div>
+              <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #e0f2fe, #7dd3fc, #22d3ee)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Swiftflow</div>
               <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.08em', marginTop: 1 }}>workspace</div>
             </div>
           </div>

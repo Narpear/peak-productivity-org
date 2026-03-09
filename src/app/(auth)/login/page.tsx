@@ -86,7 +86,7 @@ export default function SignupPage() {
       <div className="relative z-10 w-full max-w-md px-6 py-12">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold tracking-tight mb-2" style={{ background: 'linear-gradient(90deg, #e0f2fe, #7dd3fc, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            Tideflow
+            Swiftflow
           </h1>
           <p className="text-sky-400/80 text-sm tracking-widest uppercase font-light">Join the crew</p>
         </div>
