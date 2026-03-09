@@ -5,165 +5,96 @@ import { useAuthStore } from '@/store/auth'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
-type Project = {
-  id: string
-  name: string
-  description: string | null
-  color: string
-  archived: boolean
-}
+type Project = { id: string; name: string; description: string | null; color: string; archived: boolean }
 
-const COLORS = [
-  '#0ea5e9', '#8b5cf6', '#10b981', '#ef4444',
-  '#f59e0b', '#ec4899', '#6366f1', '#14b8a6',
-  '#f97316', '#84cc16',
-]
+const COLORS = ['#0ea5e9','#8b5cf6','#10b981','#ef4444','#f59e0b','#ec4899','#6366f1','#14b8a6','#f97316','#84cc16']
 
 export default function ProjectsPage() {
   const { user } = useAuthStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [color, setColor] = useState(COLORS[0])
 
-  useEffect(() => {
-    if (user) fetchProjects()
-  }, [user])
+  useEffect(() => { if (user) fetchProjects() }, [user])
 
   async function fetchProjects() {
-    const { data } = await supabase
-      .from('project_members')
-      .select('project_id, projects(id, name, description, color, archived)')
-      .eq('user_id', user!.id)
-
-    const projs = (data ?? []).map((r: any) => r.projects).filter(Boolean)
-    setProjects(projs)
+    const { data } = await supabase.from('project_members').select('project_id, projects(id, name, description, color, archived)').eq('user_id', user!.id)
+    setProjects((data ?? []).map((r: any) => r.projects).filter(Boolean))
     setLoading(false)
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreating(true)
-
-    const { data: project, error } = await supabase
-      .from('projects')
-      .insert({ name: name.trim(), description: description.trim() || null, color })
-      .select()
-      .single()
-
-    if (error || !project) { setCreating(false); return }
-
-    await supabase.from('project_members').insert({ project_id: project.id, user_id: user!.id })
-
-    setProjects(prev => [...prev, project])
-    setName('')
-    setDescription('')
-    setColor(COLORS[0])
-    setShowForm(false)
-    setCreating(false)
-  }
-
-  const inputStyle = {
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(56,189,248,0.15)',
-    boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.2)',
+    const { data: project } = await supabase.from('projects').insert({ name: name.trim(), description: description.trim() || null, color }).select().single()
+    if (project) {
+      await supabase.from('project_members').insert({ project_id: project.id, user_id: user!.id })
+      setProjects(prev => [...prev, project])
+    }
+    setName(''); setDescription(''); setColor(COLORS[0]); setShowForm(false); setCreating(false)
   }
 
   const active = projects.filter(p => !p.archived)
   const archived = projects.filter(p => p.archived)
 
+  const inputStyle: React.CSSProperties = { width: '100%', padding: '11px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, outline: 'none', fontFamily: 'var(--font-outfit), sans-serif', boxSizing: 'border-box' }
+
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div style={{ padding: 40, maxWidth: 900, margin: '0 auto' }}>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-10">
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 40 }}>
         <div>
-          <h2 className="text-2xl font-bold text-white">Projects</h2>
-          <p className="text-sm mt-1" style={{ color: 'rgba(56,189,248,0.4)' }}>{active.length} active</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Projects</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{active.length} active</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all duration-200"
-          style={{ background: 'linear-gradient(135deg, #0891b2, #0ea5e9)', boxShadow: '0 4px 20px rgba(6,182,212,0.3)' }}
-        >
+        <button onClick={() => setShowForm(true)} style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #0891b2, #0ea5e9)', border: 'none', borderRadius: 12, color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 20px rgba(6,182,212,0.3)', fontFamily: 'var(--font-outfit), sans-serif' }}>
           New Project
         </button>
       </div>
 
-      {/* Create form modal */}
+      {/* Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-          <div className="w-full max-w-md mx-4 rounded-3xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #0d1f35, #0a1628)', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 40px 100px rgba(0,0,0,0.6)' }}>
-            <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.6), transparent)' }} />
-            <div className="p-8">
-              <h3 className="text-lg font-bold text-white mb-6">New Project</h3>
-              <form onSubmit={handleCreate} className="space-y-5">
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div style={{ width: '100%', maxWidth: 440, margin: '0 16px', borderRadius: 24, overflow: 'hidden', background: 'linear-gradient(135deg, #0d1f35, #0a1628)', border: '1px solid rgba(34,211,238,0.2)', boxShadow: '0 40px 100px rgba(0,0,0,0.6)' }}>
+            <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.6), transparent)' }} />
+            <div style={{ padding: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>New Project</h3>
+                <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 <div>
-                  <label className="block text-sky-300/80 text-xs font-semibold mb-2 tracking-wider uppercase">Project Name</label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    required
-                    placeholder="e.g. Product Redesign"
-                    className="w-full rounded-xl px-4 py-3 text-white text-sm placeholder-sky-700 outline-none transition-all duration-200"
-                    style={inputStyle}
-                    onFocus={e => { e.target.style.border = '1px solid rgba(56,189,248,0.5)' }}
-                    onBlur={e => { e.target.style.border = '1px solid rgba(56,189,248,0.15)' }}
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-muted)', marginBottom: 8 }}>Name</label>
+                  <input value={name} onChange={e => setName(e.target.value)} required placeholder="e.g. Product Redesign" style={inputStyle}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(34,211,238,0.5)')}
+                    onBlur={e => (e.target.style.borderColor = 'rgba(56,189,248,0.15)')}
                   />
                 </div>
                 <div>
-                  <label className="block text-sky-300/80 text-xs font-semibold mb-2 tracking-wider uppercase">Description</label>
-                  <textarea
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    placeholder="What's this project about? (optional)"
-                    rows={3}
-                    className="w-full rounded-xl px-4 py-3 text-white text-sm placeholder-sky-700 outline-none transition-all duration-200 resize-none"
-                    style={inputStyle}
-                    onFocus={e => { e.target.style.border = '1px solid rgba(56,189,248,0.5)' }}
-                    onBlur={e => { e.target.style.border = '1px solid rgba(56,189,248,0.15)' }}
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-muted)', marginBottom: 8 }}>Description</label>
+                  <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional" rows={3} style={{ ...inputStyle, resize: 'none' }}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(34,211,238,0.5)')}
+                    onBlur={e => (e.target.style.borderColor = 'rgba(56,189,248,0.15)')}
                   />
                 </div>
                 <div>
-                  <label className="block text-sky-300/80 text-xs font-semibold mb-3 tracking-wider uppercase">Color</label>
-                  <div className="flex gap-2 flex-wrap">
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-muted)', marginBottom: 10 }}>Color</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {COLORS.map(c => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setColor(c)}
-                        className="w-7 h-7 rounded-full transition-all duration-150"
-                        style={{
-                          background: c,
-                          outline: color === c ? `3px solid ${c}` : 'none',
-                          outlineOffset: '2px',
-                          opacity: color === c ? 1 : 0.5,
-                        }}
-                      />
+                      <button key={c} type="button" onClick={() => setColor(c)} style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: color === c ? `3px solid ${c}` : 'none', outlineOffset: 2, opacity: color === c ? 1 : 0.45, transition: 'all 0.15s' }} />
                     ))}
                   </div>
                 </div>
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowForm(false)}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(56,189,248,0.15)', color: 'rgba(148,210,245,0.7)' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={creating}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
-                    style={{ background: 'linear-gradient(135deg, #0891b2, #0ea5e9)', boxShadow: '0 4px 20px rgba(6,182,212,0.3)' }}
-                  >
-                    {creating ? 'Creating...' : 'Create Project'}
-                  </button>
+                <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                  <button type="button" onClick={() => setShowForm(false)} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: 12, color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-outfit), sans-serif' }}>Cancel</button>
+                  <button type="submit" disabled={creating} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #0891b2, #0ea5e9)', border: 'none', borderRadius: 12, color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-outfit), sans-serif', opacity: creating ? 0.6 : 1 }}>{creating ? 'Creating...' : 'Create'}</button>
                 </div>
               </form>
             </div>
@@ -172,48 +103,42 @@ export default function ProjectsPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(56,189,248,0.2)', borderTopColor: '#38bdf8' }} />
+        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
+          <div style={{ width: 20, height: 20, border: '2px solid rgba(56,189,248,0.15)', borderTopColor: '#22d3ee', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : (
         <>
-          {/* Active projects grid */}
           {active.length === 0 ? (
-            <div className="rounded-2xl px-6 py-16 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(56,189,248,0.1)' }}>
-              <p className="text-sky-600 text-sm">No projects yet.</p>
-              <button onClick={() => setShowForm(true)} className="text-sky-400 text-sm hover:text-sky-300 mt-1 transition-colors">Create your first one</button>
+            <div style={{ border: '1px dashed rgba(56,189,248,0.1)', borderRadius: 16, padding: '64px 24px', textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 8 }}>No projects yet.</p>
+              <button onClick={() => setShowForm(true)} style={{ color: '#22d3ee', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}>Create your first one</button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               {active.map(p => (
-                <Link
-                  key={p.id}
-                  href={`/projects/${p.id}`}
-                  className="group rounded-2xl p-6 transition-all duration-200 hover:scale-[1.02]"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(56,189,248,0.08)' }}
+                <Link key={p.id} href={`/projects/${p.id}`} style={{ textDecoration: 'none', display: 'block', padding: 24, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 20, transition: 'all 0.2s ease', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.borderColor = 'var(--border-dim)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.3)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-1)'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-3 h-3 rounded-full mt-1" style={{ background: p.color, boxShadow: `0 0 12px ${p.color}80` }} />
-                    <svg className="w-4 h-4 opacity-0 group-hover:opacity-40 transition-opacity" style={{ color: '#38bdf8' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path d="M5 12h14M12 5l7 7-7 7"/>
-                    </svg>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, boxShadow: `0 0 12px ${p.color}` }} />
+                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="rgba(34,211,238,0.3)" strokeWidth={2}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </div>
-                  <h3 className="text-base font-semibold text-sky-100 mb-1">{p.name}</h3>
-                  {p.description && <p className="text-xs line-clamp-2" style={{ color: 'rgba(56,189,248,0.4)' }}>{p.description}</p>}
+                  <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>{p.name}</p>
+                  {p.description && <p style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description}</p>}
                 </Link>
               ))}
             </div>
           )}
 
-          {/* Archived */}
           {archived.length > 0 && (
-            <div className="mt-10">
-              <h3 className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: 'rgba(56,189,248,0.3)' }}>Archived</h3>
-              <div className="grid grid-cols-2 gap-4 opacity-50">
+            <div style={{ marginTop: 40, opacity: 0.5 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--text-muted)', marginBottom: 16 }}>Archived</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 {archived.map(p => (
-                  <Link key={p.id} href={`/projects/${p.id}`} className="rounded-2xl p-6" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(56,189,248,0.05)' }}>
-                    <div className="w-3 h-3 rounded-full mb-4" style={{ background: p.color }} />
-                    <h3 className="text-base font-semibold text-sky-300">{p.name}</h3>
+                  <Link key={p.id} href={`/projects/${p.id}`} style={{ textDecoration: 'none', padding: 24, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 20, display: 'block' }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, marginBottom: 12 }} />
+                    <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</p>
                   </Link>
                 ))}
               </div>

@@ -22,17 +22,18 @@ import TaskNode from './TaskNode'
 const nodeTypes = { task: TaskNode }
 
 type RawTask = {
-  id: string
-  title: string
-  status: 'todo' | 'in_progress' | 'done'
+  id: string; title: string; status: 'todo' | 'in_progress' | 'done'
   assigned_to: string | null
   assignee?: { name: string; avatar_color: string } | null
 }
+type Member = { id: string; name: string; avatar_color: string }
 
-type Member = {
-  id: string
-  name: string
-  avatar_color: string
+function getWeekNumber(d: Date) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  const dayNum = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
 }
 
 export default function DagView({ projectId }: { projectId: string }) {
@@ -47,47 +48,27 @@ export default function DagView({ projectId }: { projectId: string }) {
   const [newTaskAssignee, setNewTaskAssignee] = useState('')
   const [creating, setCreating] = useState(false)
 
-  useEffect(() => {
-    loadAll()
-  }, [projectId])
+  useEffect(() => { loadAll() }, [projectId])
 
   async function loadAll() {
-    // Members
-    const { data: memberRows } = await supabase
-      .from('project_members')
-      .select('user_id, users(id, name, avatar_color)')
-      .eq('project_id', projectId)
+    const { data: memberRows } = await supabase.from('project_members').select('user_id, users(id, name, avatar_color)').eq('project_id', projectId)
     const mems = (memberRows ?? []).map((r: any) => r.users).filter(Boolean)
     setMembers(mems)
 
-    // Tasks in this project (all types)
-    const { data: taskRows } = await supabase
-      .from('tasks')
-      .select('id, title, status, assigned_to, assignee:assigned_to(name, avatar_color)')
-      .eq('project_id', projectId)
-      .order('created_at')
-    const rawTasks = (taskRows ?? []) as RawTask[]
+    const { data: taskRows } = await supabase.from('tasks').select('id, title, status, assigned_to, assignee:assigned_to(name, avatar_color)').eq('project_id', projectId).order('created_at')
+    const rawTasks = (taskRows ?? []) as unknown as RawTask[]
     setTasks(rawTasks)
 
-    // Node positions
-    const { data: positions } = await supabase
-      .from('dag_node_positions')
-      .select('*')
-      .eq('project_id', projectId)
+    const { data: positions } = await supabase.from('dag_node_positions').select('*').eq('project_id', projectId)
     const posMap: Record<string, { x: number; y: number }> = {}
     ;(positions ?? []).forEach((p: any) => { posMap[p.task_id] = { x: p.x, y: p.y } })
 
-    // Dependencies (edges)
-    const { data: deps } = await supabase
-      .from('task_dependencies')
-      .select('*')
-      .eq('project_id', projectId)
+    const { data: deps } = await supabase.from('task_dependencies').select('*').eq('project_id', projectId)
 
-    // Build nodes
     const builtNodes: Node[] = rawTasks.map((t, i) => ({
       id: t.id,
       type: 'task',
-      position: posMap[t.id] ?? { x: (i % 4) * 240 + 40, y: Math.floor(i / 4) * 160 + 40 },
+      position: posMap[t.id] ?? { x: (i % 4) * 260 + 40, y: Math.floor(i / 4) * 180 + 40 },
       data: {
         label: t.title,
         status: t.status,
@@ -97,14 +78,12 @@ export default function DagView({ projectId }: { projectId: string }) {
       },
     }))
 
-    // Build edges
     const builtEdges: Edge[] = (deps ?? []).map((d: any) => ({
       id: d.id,
       source: d.depends_on_id,
       target: d.task_id,
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#38bdf8' },
-      style: { stroke: '#38bdf8', strokeWidth: 1.5, opacity: 0.6 },
-      animated: false,
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#22d3ee' },
+      style: { stroke: '#22d3ee', strokeWidth: 1.5, opacity: 0.5 },
     }))
 
     setNodes(builtNodes)
@@ -112,15 +91,9 @@ export default function DagView({ projectId }: { projectId: string }) {
     setLoading(false)
   }
 
-  // Persist node position on drag end
   const onNodeDragStop = useCallback(async (_: any, node: Node) => {
     const { x, y } = node.position
-    const { data: existing } = await supabase
-      .from('dag_node_positions')
-      .select('id')
-      .eq('task_id', node.id)
-      .single()
-
+    const { data: existing } = await supabase.from('dag_node_positions').select('id').eq('task_id', node.id).single()
     if (existing) {
       await supabase.from('dag_node_positions').update({ x, y }).eq('task_id', node.id)
     } else {
@@ -128,39 +101,22 @@ export default function DagView({ projectId }: { projectId: string }) {
     }
   }, [projectId])
 
-  // Add dependency edge on connect
   const onConnect = useCallback(async (connection: Connection) => {
-    if (!connection.source || !connection.target) return
-
-    // Prevent self-loops
-    if (connection.source === connection.target) return
-
-    // Check for cycle (simple: don't allow if reverse already exists)
+    if (!connection.source || !connection.target || connection.source === connection.target) return
     const reverseExists = edges.some(e => e.source === connection.target && e.target === connection.source)
     if (reverseExists) return
-
-    const { data, error } = await supabase.from('task_dependencies').insert({
-      task_id: connection.target,
-      depends_on_id: connection.source,
-      project_id: projectId,
-    }).select().single()
-
+    const { data, error } = await supabase.from('task_dependencies').insert({ task_id: connection.target, depends_on_id: connection.source, project_id: projectId }).select().single()
     if (error || !data) return
-
     const newEdge: Edge = {
-      id: data.id,
-      source: connection.source,
-      target: connection.target,
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#38bdf8' },
-      style: { stroke: '#38bdf8', strokeWidth: 1.5, opacity: 0.6 },
+      id: data.id, source: connection.source, target: connection.target,
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#22d3ee' },
+      style: { stroke: '#22d3ee', strokeWidth: 1.5, opacity: 0.5 },
     }
     setEdges(eds => addEdge(newEdge, eds))
   }, [edges, projectId, setEdges])
 
-  // Delete edge on click
   const onEdgeClick = useCallback(async (_: any, edge: Edge) => {
-    const confirmed = window.confirm('Remove this dependency?')
-    if (!confirmed) return
+    if (!window.confirm('Remove this dependency?')) return
     await supabase.from('task_dependencies').delete().eq('id', edge.id)
     setEdges(eds => eds.filter(e => e.id !== edge.id))
   }, [setEdges])
@@ -176,8 +132,7 @@ export default function DagView({ projectId }: { projectId: string }) {
   }
 
   async function deleteTask(taskId: string) {
-    const confirmed = window.confirm('Delete this task from the DAG?')
-    if (!confirmed) return
+    if (!window.confirm('Delete this task?')) return
     await supabase.from('tasks').delete().eq('id', taskId)
     setTasks(prev => prev.filter(t => t.id !== taskId))
     setNodes(nds => nds.filter(n => n.id !== taskId))
@@ -188,112 +143,67 @@ export default function DagView({ projectId }: { projectId: string }) {
     if (!newTaskTitle.trim()) return
     setCreating(true)
     const now = new Date()
-
     const { data } = await supabase.from('tasks').insert({
-      title: newTaskTitle.trim(),
-      type: 'daily',
-      status: 'todo',
-      project_id: projectId,
-      assigned_to: newTaskAssignee || null,
-      assigned_by: user!.id,
-      week_number: getWeekNumber(now),
-      year: now.getFullYear(),
-      position: tasks.length,
+      title: newTaskTitle.trim(), type: 'daily', status: 'todo', project_id: projectId,
+      assigned_to: newTaskAssignee || null, assigned_by: user!.id,
+      week_number: getWeekNumber(now), year: now.getFullYear(), position: tasks.length,
     }).select('id, title, status, assigned_to, assignee:assigned_to(name, avatar_color)').single()
 
     if (data) {
       const newNode: Node = {
-        id: data.id,
-        type: 'task',
+        id: data.id, type: 'task',
         position: { x: Math.random() * 400 + 40, y: Math.random() * 300 + 40 },
         data: {
-          label: data.title,
-          status: data.status,
+          label: data.title, status: data.status,
           assignee: Array.isArray(data.assignee) ? data.assignee[0] : data.assignee,
           onDelete: (id: string) => deleteTask(id),
           onStatusCycle: (id: string) => cycleStatus(id),
         },
       }
       setNodes(nds => [...nds, newNode])
-      setTasks(prev => [...prev, data as RawTask])
+      setTasks(prev => [...prev, data as unknown as RawTask])
     }
-
-    setNewTaskTitle('')
-    setNewTaskAssignee('')
-    setShowAddTask(false)
-    setCreating(false)
+    setNewTaskTitle(''); setNewTaskAssignee(''); setShowAddTask(false); setCreating(false)
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center h-full">
-      <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(56,189,248,0.2)', borderTopColor: '#38bdf8' }} />
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 130px)' }}>
+      <div style={{ width: 18, height: 18, border: '2px solid rgba(56,189,248,0.15)', borderTopColor: '#22d3ee', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
 
   return (
     <div style={{ width: '100%', height: 'calc(100vh - 130px)', background: '#070f1a' }}>
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeDragStop={onNodeDragStop}
-        onEdgeClick={onEdgeClick}
-        nodeTypes={nodeTypes}
-        fitView
-        deleteKeyCode={null}
+        nodes={nodes} edges={edges}
+        onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+        onConnect={onConnect} onNodeDragStop={onNodeDragStop} onEdgeClick={onEdgeClick}
+        nodeTypes={nodeTypes} fitView deleteKeyCode={null}
         style={{ background: '#070f1a' }}
       >
-        <Background color="rgba(56,189,248,0.06)" gap={24} size={1} />
-        <Controls
-          style={{ background: 'rgba(10,22,40,0.9)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '12px' }}
-        />
-        <MiniMap
-          style={{ background: 'rgba(10,22,40,0.9)', border: '1px solid rgba(56,189,248,0.1)', borderRadius: '12px' }}
-          nodeColor={() => 'rgba(56,189,248,0.4)'}
-          maskColor="rgba(7,15,26,0.8)"
-        />
+        <Background color="rgba(34,211,238,0.04)" gap={28} size={1} />
+        <Controls style={{ background: 'rgba(5,15,31,0.95)', border: '1px solid rgba(34,211,238,0.15)', borderRadius: 12 }} />
+        <MiniMap style={{ background: 'rgba(5,15,31,0.95)', border: '1px solid rgba(34,211,238,0.1)', borderRadius: 12 }} nodeColor={() => 'rgba(34,211,238,0.35)'} maskColor="rgba(7,15,26,0.85)" />
 
         <Panel position="top-left">
-          <div className="flex flex-col gap-2 p-3" style={{ background: 'rgba(10,22,40,0.95)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '16px', backdropFilter: 'blur(10px)' }}>
-            <p className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'rgba(56,189,248,0.5)' }}>Dependency Graph</p>
-            <p className="text-xs" style={{ color: 'rgba(56,189,248,0.3)' }}>Drag between nodes to add edges</p>
-            <p className="text-xs" style={{ color: 'rgba(56,189,248,0.3)' }}>Click an edge to remove it</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16, background: 'rgba(5,15,31,0.97)', border: '1px solid rgba(34,211,238,0.15)', borderRadius: 16, backdropFilter: 'blur(10px)', minWidth: 200 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(34,211,238,0.5)' }}>Dependency Graph</p>
+            <p style={{ fontSize: 11, color: 'rgba(56,189,248,0.3)', lineHeight: 1.5 }}>Drag between nodes to add edges.<br/>Click an edge to remove it.</p>
 
             {showAddTask ? (
-              <div className="flex flex-col gap-2 mt-1 min-w-[200px]">
-                <input
-                  autoFocus
-                  value={newTaskTitle}
-                  onChange={e => setNewTaskTitle(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') createTask(); if (e.key === 'Escape') setShowAddTask(false) }}
-                  placeholder="Task title..."
-                  className="text-xs px-3 py-2 rounded-lg outline-none text-white placeholder-sky-700"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(56,189,248,0.2)' }}
-                />
-                <select
-                  value={newTaskAssignee}
-                  onChange={e => setNewTaskAssignee(e.target.value)}
-                  className="text-xs px-3 py-2 rounded-lg outline-none"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(56,189,248,0.2)', color: '#7dd3fc' }}
-                >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                <input autoFocus value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') createTask(); if (e.key === 'Escape') setShowAddTask(false) }} placeholder="Task title..." style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: 10, outline: 'none', fontSize: 12, color: 'var(--text-primary)', fontFamily: 'var(--font-outfit), sans-serif' }} />
+                <select value={newTaskAssignee} onChange={e => setNewTaskAssignee(e.target.value)} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: 10, outline: 'none', fontSize: 12, color: '#7dd3fc', fontFamily: 'var(--font-outfit), sans-serif' }}>
                   <option value="">Assign to...</option>
                   {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
-                <div className="flex gap-2">
-                  <button onClick={createTask} disabled={creating} className="flex-1 text-xs py-1.5 rounded-lg text-white font-medium" style={{ background: 'linear-gradient(135deg, #0891b2, #0ea5e9)' }}>
-                    {creating ? '...' : 'Add'}
-                  </button>
-                  <button onClick={() => setShowAddTask(false)} className="text-xs px-2 rounded-lg" style={{ color: 'rgba(56,189,248,0.5)' }}>Cancel</button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={createTask} disabled={creating} style={{ flex: 1, padding: '7px', background: 'linear-gradient(135deg, #0891b2, #0ea5e9)', border: 'none', borderRadius: 8, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-outfit), sans-serif' }}>{creating ? '...' : 'Add'}</button>
+                  <button onClick={() => setShowAddTask(false)} style={{ padding: '7px 10px', background: 'transparent', border: '1px solid rgba(56,189,248,0.15)', borderRadius: 8, color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font-outfit), sans-serif' }}>Cancel</button>
                 </div>
               </div>
             ) : (
-              <button
-                onClick={() => setShowAddTask(true)}
-                className="text-xs py-1.5 px-3 rounded-lg text-white font-medium mt-1 transition-all"
-                style={{ background: 'linear-gradient(135deg, #0891b2, #0ea5e9)' }}
-              >
+              <button onClick={() => setShowAddTask(true)} style={{ padding: '8px', background: 'linear-gradient(135deg, #0891b2, #0ea5e9)', border: 'none', borderRadius: 10, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-outfit), sans-serif', marginTop: 4 }}>
                 + Add Task Node
               </button>
             )}
@@ -302,12 +212,4 @@ export default function DagView({ projectId }: { projectId: string }) {
       </ReactFlow>
     </div>
   )
-}
-
-function getWeekNumber(d: Date) {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
-  const dayNum = date.getUTCDay() || 7
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum)
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
-  return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
 }

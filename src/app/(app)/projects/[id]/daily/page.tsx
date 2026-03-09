@@ -7,9 +7,9 @@ export default function DailyPage({ params }: { params: Promise<{ id: string }> 
   const { id } = use(params)
   return (
     <div>
-      <div className="px-8 pt-6 pb-0">
-        <h3 className="text-sm font-semibold uppercase tracking-widest" style={{ color: 'rgba(56,189,248,0.5)' }}>Daily Tasks</h3>
-        <p className="text-xs mt-1" style={{ color: 'rgba(56,189,248,0.3)' }}>
+      <div style={{ padding: '28px 40px 0' }}>
+        <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--text-muted)', marginBottom: 4 }}>Daily Tasks</p>
+        <p style={{ fontSize: 13, color: 'rgba(56,189,248,0.3)' }}>
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </p>
       </div>
