@@ -4,34 +4,38 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
+import { getRandomRole } from '@/lib/roles'
 import Link from 'next/link'
 
-export default function LoginPage() {
+const AVATAR_COLORS = ['#0ea5e9','#8b5cf6','#10b981','#ef4444','#f59e0b','#ec4899','#6366f1','#14b8a6','#f97316','#84cc16']
+
+export default function SignupPage() {
   const router = useRouter()
   const setUser = useAuthStore((s) => s.setUser)
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    const { data, error: err } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email.toLowerCase().trim())
-      .eq('password', password)
-      .single()
+    const { data: existing } = await supabase.from('users').select('id').eq('email', email.toLowerCase().trim()).single()
+    if (existing) { setError('An account with this email already exists.'); setLoading(false); return }
 
-    if (err || !data) { setError('Invalid email or password.'); setLoading(false); return }
+    const role = getRandomRole()
+    const avatar_color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]
+
+    const { data, error: err } = await supabase.from('users').insert({
+      email: email.toLowerCase().trim(), password, name: name.trim(), role, avatar_color,
+    }).select().single()
+
+    if (err || !data) { setError('Something went wrong. Please try again.'); setLoading(false); return }
 
     setUser({ id: data.id, email: data.email, name: data.name, role: data.role, avatar_color: data.avatar_color })
-    if (typeof window !== 'undefined') {
-      document.cookie = `auth-store=1; path=/; max-age=604800; SameSite=Lax`
-    }
     router.push('/dashboard')
   }
 
@@ -79,16 +83,23 @@ export default function LoginPage() {
             </div>
             <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #e0f2fe, #7dd3fc, #22d3ee)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Swiftflow</span>
           </div>
-          <p style={{ fontSize: 12, color: 'rgba(56,189,248,0.45)', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Team productivity · Coastal style</p>
+          <p style={{ fontSize: 12, color: 'rgba(56,189,248,0.45)', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Join the crew</p>
         </div>
 
         {/* Form card */}
         <div style={{ borderRadius: 24, overflow: 'hidden', background: 'linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))', border: '1px solid rgba(56,189,248,0.15)', boxShadow: '0 32px 80px rgba(0,0,0,0.4)' }}>
           <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.6), transparent)' }} />
           <div style={{ padding: 28 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(56,189,248,0.4)', textAlign: 'center', marginBottom: 24 }}>Sign in to your workspace</p>
+            <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(56,189,248,0.4)', textAlign: 'center', marginBottom: 24 }}>Create your account</p>
 
-            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <form onSubmit={handleSignup} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <label style={labelStyle}>Name</label>
+                <input type="text" value={name} onChange={e => setName(e.target.value)} required placeholder="Your name" style={inputStyle}
+                  onFocus={e => (e.target.style.borderColor = 'rgba(34,211,238,0.5)')}
+                  onBlur={e => (e.target.style.borderColor = 'rgba(56,189,248,0.15)')}
+                />
+              </div>
               <div>
                 <label style={labelStyle}>Email</label>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@yourco.com" style={inputStyle}
@@ -104,6 +115,10 @@ export default function LoginPage() {
                 />
               </div>
 
+              <p style={{ fontSize: 12, color: 'rgba(56,189,248,0.35)', lineHeight: 1.5 }}>
+                You'll be assigned a coastal role at random. You can change it later from your profile.
+              </p>
+
               {error && (
                 <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10 }}>
                   <span style={{ fontSize: 13, color: '#f87171' }}>{error}</span>
@@ -114,26 +129,22 @@ export default function LoginPage() {
                 {loading ? (
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                     <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
-                    Diving in...
+                    Setting sail...
                   </span>
-                ) : 'Sign In'}
+                ) : 'Join the Crew'}
               </button>
             </form>
 
             <p style={{ textAlign: 'center', fontSize: 12, color: 'rgba(56,189,248,0.35)', marginTop: 20 }}>
-              New to the crew?{' '}
-              <Link href="/signup" style={{ color: 'rgba(34,211,238,0.7)', textDecoration: 'none', fontWeight: 500, transition: 'color 0.15s' }}
+              Already on board?{' '}
+              <Link href="/login" style={{ color: 'rgba(34,211,238,0.7)', textDecoration: 'none', fontWeight: 500, transition: 'color 0.15s' }}
                 onMouseEnter={e => (e.currentTarget.style.color = '#22d3ee')}
                 onMouseLeave={e => (e.currentTarget.style.color = 'rgba(34,211,238,0.7)')}
-              >Create an account</Link>
+              >Sign in</Link>
             </p>
           </div>
           <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.15), transparent)' }} />
         </div>
-
-        <p style={{ textAlign: 'center', fontSize: 11, color: 'rgba(56,189,248,0.2)', marginTop: 20 }}>
-          Contact your Harbor Master to get access.
-        </p>
       </div>
     </div>
   )
